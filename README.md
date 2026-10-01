@@ -73,6 +73,20 @@ Without Twilio keys the app runs in **demo mode**: every WhatsApp message is pri
    ```
 5. Restart the backend. The sidebar now shows **WhatsApp is live**.
 
+### Twilio trial accounts ("ContentSid Required" error)
+
+Trial accounts are not allowed to send free text on WhatsApp — only Twilio's pre-approved templates.
+On the **Try WhatsApp** page, pick the template with **two variables** (e.g. the appointment reminder),
+copy its Content SID (starts with `HX`) and add it to `.env`:
+
+```
+TWILIO_CONTENT_SID=HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+The app then fills `{{1}}` with "Role at Company" and `{{2}}` with "Location (type). Apply: link".
+The full job message (as in the assignment) is still printed in the terminal and shown in the app preview.
+After upgrading the Twilio account, remove `TWILIO_CONTENT_SID` to send the full message.
+
 Every extra number (a friend, a second phone) must also send the join phrase once.
 If a message fails with "hasn't joined the sandbox recently", send the join phrase again — the sandbox session expires after a while.
 

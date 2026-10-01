@@ -9,7 +9,7 @@
 const Job             = require("../models/Job");
 const NotificationLog = require("../models/NotificationLog");
 const { findMatches } = require("./matcher");
-const { buildJobMessage, sendWhatsApp } = require("./notifier");
+const { buildJobMessage, buildJobVariables, sendWhatsApp } = require("./notifier");
 
 // Sends alerts to one user for the given jobs (defaults to every job in the DB).
 // Returns a list like [{ title, company, status: "sent" | "skipped" | "failed", ... }]
@@ -29,7 +29,11 @@ async function alertUser(user, jobs = null) {
     }
 
     // ── Send ────────────────────────────────────────────────────────
-    const { success, channel, errorMessage } = await sendWhatsApp(user.phoneNumber, buildJobMessage(job));
+    const { success, channel, errorMessage } = await sendWhatsApp(
+      user.phoneNumber,
+      buildJobMessage(job),
+      buildJobVariables(job)
+    );
 
     // ── Log (update the old "failed" row if there was one) ──────────
     await NotificationLog.findOneAndUpdate(

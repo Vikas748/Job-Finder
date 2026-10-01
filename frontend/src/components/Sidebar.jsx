@@ -40,7 +40,9 @@ export default function Sidebar({ activePage, onNavigate, status }) {
           <strong>{status.twilioEnabled ? "WhatsApp is live" : "Demo mode"}</strong>
           <span>
             {status.twilioEnabled
-              ? `Sending from ${status.sandboxNumber}`
+              ? status.usingTemplate
+                ? `Trial account: sending Twilio's template from ${status.sandboxNumber}`
+                : `Sending from ${status.sandboxNumber}`
               : "Add Twilio keys to backend/.env to send real messages. Until then, messages print in the backend terminal."}
           </span>
         </div>

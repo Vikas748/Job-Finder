@@ -103,7 +103,8 @@ const sendTestMessage = async (req, res) => {
 
   const result = await sendWhatsApp(
     user.phoneNumber,
-    `👋 Hi ${user.name}! Job alerts are connected. You'll get a message here whenever a new job matches your preferences.`
+    `👋 Hi ${user.name}! Job alerts are connected. You'll get a message here whenever a new job matches your preferences.`,
+    { 1: `JobPing test for ${user.name}`, 2: "now" }
   );
   res.json(result);
 };
