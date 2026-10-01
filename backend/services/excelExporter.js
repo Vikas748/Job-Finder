@@ -1,95 +1,91 @@
 // services/excelExporter.js
-// Generates a formatted Excel (.xlsx) file of matching jobs using exceljs.
+// Builds a formatted Excel workbook of a user's matching jobs (using exceljs).
+// Sheet 1: Matching Jobs   Sheet 2: the user's preferences (so the file explains itself)
 
 const ExcelJS = require("exceljs");
-const path    = require("path");
-const fs      = require("fs");
 
-class ExcelExporter {
-  constructor() {
-    // Make sure the exports directory exists
-    this.exportDir = path.join(__dirname, "..", "data", "exports");
-    fs.mkdirSync(this.exportDir, { recursive: true });
-  }
+const HEADER_COLOR = "FF14424A"; // dark teal
+const STRIPE_COLOR = "FFF1F6F6"; // very light teal
+const BORDER = { style: "thin", color: { argb: "FFD5DEDF" } };
 
-  // Builds and saves the Excel file.
-  // @param {Array} matchedJobs  Array of plain job objects (with matchReason field)
-  // @returns {string}           Absolute path to the saved .xlsx file
-  async export(matchedJobs) {
-    const workbook  = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Matching Jobs");
+function createWorkbook(user, matches) {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet("Matching Jobs", {
+    views: [{ state: "frozen", ySplit: 1 }], // header stays visible while scrolling
+  });
 
-    // ── Define columns ────────────────────────────────────────────────
-    worksheet.columns = [
-      { header: "Company",      key: "company",     width: 20 },
-      { header: "Job Title",    key: "title",       width: 30 },
-      { header: "Location",     key: "location",    width: 20 },
-      { header: "Work Type",    key: "workType",    width: 12 },
-      { header: "Posted Date",  key: "postedDate",  width: 14 },
-      { header: "Job URL",      key: "jobUrl",      width: 45 },
-      { header: "Why Matched",  key: "matchReason", width: 50 },
-    ];
+  sheet.columns = [
+    { header: "Company",         key: "company",       width: 18 },
+    { header: "Job Title",       key: "title",         width: 30 },
+    { header: "Location",        key: "location",      width: 20 },
+    { header: "Remote / On-site", key: "workType",     width: 16 },
+    { header: "Posted Date",     key: "postedDate",    width: 13 },
+    { header: "Match Score",     key: "matchScore",    width: 12 },
+    { header: "Matched Skills",  key: "matchedSkills", width: 28 },
+    { header: "Skills to Learn", key: "missingSkills", width: 28 },
+    { header: "Why It Matched",  key: "matchReason",   width: 48 },
+    { header: "Job URL",         key: "jobUrl",        width: 42 },
+  ];
 
-    // ── Style the header row ──────────────────────────────────────────
-    const headerRow = worksheet.getRow(1);
-    headerRow.eachCell((cell) => {
-      cell.font         = { bold: true, color: { argb: "FFFFFFFF" }, size: 11 };
-      cell.fill         = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
-      cell.alignment    = { horizontal: "center", vertical: "middle", wrapText: true };
-      cell.border       = {
-        top:    { style: "thin", color: { argb: "FFB0C4DE" } },
-        left:   { style: "thin", color: { argb: "FFB0C4DE" } },
-        bottom: { style: "thin", color: { argb: "FFB0C4DE" } },
-        right:  { style: "thin", color: { argb: "FFB0C4DE" } },
-      };
+  // ── Header style ──────────────────────────────────────────────────
+  const header = sheet.getRow(1);
+  header.height = 26;
+  header.eachCell((cell) => {
+    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: HEADER_COLOR } };
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+  });
+
+  // ── Data rows ─────────────────────────────────────────────────────
+  matches.forEach((job, index) => {
+    const row = sheet.addRow({
+      company:       job.company,
+      title:         job.title,
+      location:      job.location,
+      workType:      job.workType,
+      postedDate:    job.postedDate,
+      matchScore:    job.matchScore / 100, // shown as a percentage
+      matchedSkills: (job.matchedSkills || []).join(", "),
+      missingSkills: (job.missingSkills || []).join(", "),
+      matchReason:   job.matchReason,
+      jobUrl:        { text: job.jobUrl, hyperlink: job.jobUrl },
     });
-    headerRow.height = 28;
 
-    // ── Add data rows ─────────────────────────────────────────────────
-    matchedJobs.forEach((job, index) => {
-      const row = worksheet.addRow({
-        company:     job.company     || "",
-        title:       job.title       || "",
-        location:    job.location    || "",
-        workType:    job.workType    || "",
-        postedDate:  job.postedDate  || "",
-        jobUrl:      job.jobUrl      || "",
-        matchReason: job.matchReason || "",
-      });
-
-      // Alternating row background
-      const bgColor = index % 2 === 0 ? "FFEBF2FF" : "FFFFFFFF";
-
-      row.eachCell((cell) => {
-        cell.fill      = { type: "pattern", pattern: "solid", fgColor: { argb: bgColor } };
-        cell.alignment = { vertical: "top", wrapText: true };
-        cell.border    = {
-          top:    { style: "thin", color: { argb: "FFB0C4DE" } },
-          left:   { style: "thin", color: { argb: "FFB0C4DE" } },
-          bottom: { style: "thin", color: { argb: "FFB0C4DE" } },
-          right:  { style: "thin", color: { argb: "FFB0C4DE" } },
-        };
-      });
-
-      // Make the Job URL column a hyperlink
-      const urlCell = row.getCell("jobUrl");
-      if (job.jobUrl && job.jobUrl.startsWith("http")) {
-        urlCell.value = { text: job.jobUrl, hyperlink: job.jobUrl };
-        urlCell.font  = { color: { argb: "FF0563C1" }, underline: true };
+    row.eachCell((cell) => {
+      cell.alignment = { vertical: "top", wrapText: true };
+      cell.border = { top: BORDER, left: BORDER, bottom: BORDER, right: BORDER };
+      if (index % 2 === 1) {
+        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: STRIPE_COLOR } };
       }
-
-      row.height = 40;
     });
 
-    // ── Save file ─────────────────────────────────────────────────────
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-    const fileName  = `matching_jobs_${timestamp}.xlsx`;
-    const filePath  = path.join(this.exportDir, fileName);
+    row.getCell("matchScore").numFmt = "0%";
+    row.getCell("jobUrl").font = { color: { argb: "FF0563C1" }, underline: true };
+  });
 
-    await workbook.xlsx.writeFile(filePath);
-    console.log(`📊  Excel exported → ${filePath}`);
-    return filePath;
-  }
+  // Filter dropdowns on every column
+  sheet.autoFilter = { from: "A1", to: "J1" };
+
+  // ── Preferences sheet ─────────────────────────────────────────────
+  const prefs = workbook.addWorksheet("Preferences");
+  prefs.columns = [
+    { header: "Field", key: "field", width: 22 },
+    { header: "Value", key: "value", width: 60 },
+  ];
+  prefs.getRow(1).font = { bold: true };
+  prefs.addRows([
+    { field: "Name",                value: user.name },
+    { field: "WhatsApp number",     value: user.phoneNumber },
+    { field: "Job titles",          value: user.jobTitles.join(", ") || "Any" },
+    { field: "Locations",           value: user.locations.join(", ") || "Any" },
+    { field: "Work types",          value: user.workTypes.join(", ") || "Any" },
+    { field: "Skills",              value: user.skills.join(", ") || "—" },
+    { field: "Preferred companies", value: user.preferredCompanies.join(", ") || "—" },
+    { field: "Matching jobs",       value: matches.length },
+    { field: "Exported at",         value: new Date().toLocaleString("en-IN") },
+  ]);
+
+  return workbook;
 }
 
-module.exports = ExcelExporter;
+module.exports = { createWorkbook };

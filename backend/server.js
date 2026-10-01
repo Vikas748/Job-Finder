@@ -1,53 +1,52 @@
 // server.js — Express application entry point
 //
-// MVC Structure:
-//   models/      → Mongoose schemas (M)
-//   controllers/ → Business logic per route group (C)
-//   routes/      → URL-to-controller mapping (connects C to HTTP)
-//   services/    → Shared utilities (matcher, notifier, excel)
+// Folder structure (MVC):
+//   models/      → Mongoose schemas (Job, User, NotificationLog)
+//   controllers/ → Request handlers
+//   routes/      → URL → controller mapping
+//   services/    → Matching, WhatsApp sending, Excel export
 
-const express = require("express");
+require("dotenv").config(); // load .env first so services can read it
+
+const express  = require("express");
 const mongoose = require("mongoose");
-const cors = require("cors");
-require("dotenv").config();
+const cors     = require("cors");
 
 const jobRoutes          = require("./routes/jobRoutes");
-const profileRoutes      = require("./routes/profileRoutes");
+const userRoutes         = require("./routes/userRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const { getStatus }      = require("./services/notifier");
 
 const app = express();
 
-// ── Middleware ───────────────────────────────────────────────────────
-app.use(cors());                        // Allow requests from the React frontend
-app.use(express.json());                // Parse JSON request bodies
+app.use(cors());         // allow the React app to call the API
+app.use(express.json()); // parse JSON bodies
 
-// ── Routes ───────────────────────────────────────────────────────────
 app.use("/api/jobs",          jobRoutes);
-app.use("/api/profile",       profileRoutes);
-app.use("/api/notifications",  notificationRoutes);
+app.use("/api/users",         userRoutes);
+app.use("/api/notifications", notificationRoutes);
 
-// ── Health check ─────────────────────────────────────────────────────
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", message: "Job Filter API is running." });
+  res.json({ status: "ok" });
 });
 
-// ── Global error handler ─────────────────────────────────────────────
+// Express 5 forwards errors from async controllers here automatically
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: err.message || "Internal server error" });
+  console.error(err);
+  if (err.name === "CastError") return res.status(400).json({ error: "Invalid ID." });
+  res.status(500).json({ error: err.message || "Something went wrong on the server." });
 });
 
-// ── Connect to MongoDB and start server ──────────────────────────────
-const PORT     = process.env.PORT || 5000;
+const PORT      = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || "mongodb://localhost:27017/jobfilter";
 
 mongoose
   .connect(MONGO_URI)
   .then(() => {
     console.log("✅  MongoDB connected");
-    app.listen(PORT, () => {
-      console.log(`🚀  Server running at http://localhost:${PORT}`);
-    });
+    const { twilioEnabled } = getStatus();
+    console.log(twilioEnabled ? "📱  Twilio WhatsApp: ON" : "🖥️   Twilio not configured — demo mode (messages print here)");
+    app.listen(PORT, () => console.log(`🚀  API running at http://localhost:${PORT}`));
   })
   .catch((err) => {
     console.error("❌  MongoDB connection failed:", err.message);

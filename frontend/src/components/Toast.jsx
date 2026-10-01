@@ -1,6 +1,6 @@
 // src/components/Toast.jsx
-// Global toast notification system.
-// Usage: wrap your app with <ToastProvider>, then call useToast() anywhere.
+// Small pop-up messages. Wrap the app in <ToastProvider>, then:
+//   const toast = useToast();  toast("Saved", "success");
 
 import { createContext, useContext, useState, useCallback } from "react";
 
@@ -10,24 +10,17 @@ export function ToastProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
   const addToast = useCallback((message, type = "info") => {
-    const id = Date.now();
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    const id = Date.now() + Math.random();
+    setToasts((prev) => [...prev, { id, message, type }]);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 5000);
   }, []);
-
-  const icons = { success: "✅", error: "❌", info: "ℹ️" };
 
   return (
     <ToastContext.Provider value={addToast}>
       {children}
-      <div className="toast-container">
-        {toasts.map(t => (
-          <div key={t.id} className={`toast ${t.type}`}>
-            <span>{icons[t.type] || "ℹ️"}</span>
-            <span>{t.message}</span>
-          </div>
+      <div className="toast-stack" role="status" aria-live="polite">
+        {toasts.map((t) => (
+          <div key={t.id} className={`toast toast-${t.type}`}>{t.message}</div>
         ))}
       </div>
     </ToastContext.Provider>

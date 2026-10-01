@@ -1,115 +1,145 @@
 // src/pages/Dashboard.jsx
-// Overview page with stats and quick-action buttons.
+// Overview: a 3-step setup guide, a few numbers, and a preview of the WhatsApp message.
 
 import { useState, useEffect } from "react";
-import { getAllJobs, getMatchingJobs, getHistory, seedJobs, sendAlerts, exportExcelUrl } from "../services/api";
+import { Check } from "lucide-react";
+import WhatsAppPreview from "../components/WhatsAppPreview";
 import { useToast } from "../components/Toast";
+import { getAllJobs, getUsers, getHistory, getUserMatches, seedJobs, sendAllAlerts } from "../services/api";
+import { summariseAlerts } from "../services/alertSummary";
 
-export default function Dashboard() {
+export default function Dashboard({ navigate }) {
   const toast = useToast();
-  const [stats, setStats] = useState({ total: "—", matched: "—", notified: "—" });
-  const [alertResults, setAlertResults] = useState([]);
-  const [loading, setLoading] = useState({ seed: false, send: false });
+  const [jobs, setJobs]       = useState([]);
+  const [users, setUsers]     = useState([]);
+  const [history, setHistory] = useState([]);
+  const [topMatch, setTopMatch] = useState(null); // best match of the newest user, for the preview
+  const [busy, setBusy]       = useState("");
 
-  // Load stats when page mounts
-  useEffect(() => { loadStats(); }, []);
+  useEffect(() => { load(); }, []);
 
-  async function loadStats() {
+  async function load() {
     try {
-      const [jobs, matched, history] = await Promise.all([
-        getAllJobs(), getMatchingJobs(), getHistory(),
-      ]);
-      setStats({ total: jobs.length, matched: matched.length, notified: history.length });
+      const [jobList, userList, logs] = await Promise.all([getAllJobs(), getUsers(), getHistory()]);
+      setJobs(jobList);
+      setUsers(userList);
+      setHistory(logs);
+      if (userList.length > 0) {
+        const matches = await getUserMatches(userList[0]._id);
+        setTopMatch(matches[0] || null);
+      }
     } catch (err) {
-      toast(`❌ ${err.message}`, "error");
+      toast(err.message, "error");
     }
   }
 
   async function handleSeed() {
-    setLoading(l => ({ ...l, seed: true }));
+    setBusy("seed");
     try {
-      const data = await seedJobs();
-      toast(`✅ ${data.message}`, "success");
-      loadStats();
+      const { message } = await seedJobs();
+      toast(message, "success");
+      await load();
     } catch (err) {
-      toast(`❌ ${err.message}`, "error");
+      toast(err.message, "error");
     }
-    setLoading(l => ({ ...l, seed: false }));
+    setBusy("");
   }
 
-  async function handleSendAlerts() {
-    setLoading(l => ({ ...l, send: true }));
-    setAlertResults([]);
+  async function handleSendAll() {
+    setBusy("send");
     try {
-      const data = await sendAlerts();
-      setAlertResults(data.results || []);
-      loadStats();
-      toast("📨 Alert run complete!", "success");
+      const { results } = await sendAllAlerts();
+      const { text, type } = summariseAlerts(results);
+      toast(text, type);
+      await load();
     } catch (err) {
-      toast(`❌ ${err.message}`, "error");
+      toast(err.message, "error");
     }
-    setLoading(l => ({ ...l, send: false }));
+    setBusy("");
   }
+
+  const sentCount = history.filter((h) => h.status === "sent").length;
+
+  // The setup really is a sequence, so it's shown as numbered steps
+  const steps = [
+    {
+      done: jobs.length > 0,
+      title: "Load job postings",
+      text: "Adds 12 sample tech jobs to the database.",
+      action: <button className="btn btn-ghost btn-sm" onClick={handleSeed} disabled={busy === "seed"}>{busy === "seed" ? "Loading…" : "Load sample jobs"}</button>,
+    },
+    {
+      done: users.length > 0,
+      title: "Add yourself as a user",
+      text: "Pick your skills and enter your own WhatsApp number.",
+      action: <button className="btn btn-ghost btn-sm" onClick={() => navigate("users")}>Add user</button>,
+    },
+    {
+      done: sentCount > 0,
+      title: "Send alerts",
+      text: "Every user gets their new matches. Already-sent jobs are skipped.",
+      action: <button className="btn btn-primary btn-sm" onClick={handleSendAll} disabled={busy === "send" || users.length === 0}>{busy === "send" ? "Sending…" : "Send alerts to everyone"}</button>,
+    },
+  ];
 
   return (
-    <div>
-      <div className="page-header">
-        <h2>🚀 Dashboard</h2>
-        <p>Overview of your job search activity</p>
-      </div>
+    <div className="page">
+      <section className="hero">
+        <div className="hero-text">
+          <h1 className="hero-title">New jobs, straight to WhatsApp.</h1>
+          <p className="hero-sub">
+            JobPing checks each job against every user's skills, titles and location,
+            writes the matches to Excel, and sends a WhatsApp message once per job.
+          </p>
 
-      {/* Stats */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-number">{stats.total}</div>
-          <div className="stat-label">Total Jobs</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">{stats.matched}</div>
-          <div className="stat-label">Matched Jobs</div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-number">{stats.notified}</div>
-          <div className="stat-label">Alerts Sent</div>
-        </div>
-      </div>
-
-      {/* Quick Actions */}
-      <div className="card">
-        <div className="card-title">⚡ Quick Actions</div>
-        <div className="btn-row">
-          <button className="btn btn-primary" onClick={handleSeed} disabled={loading.seed}>
-            {loading.seed ? <><span className="spinner" /> Loading…</> : "🌱 Load Sample Jobs"}
-          </button>
-          <button className="btn btn-success" onClick={handleSendAlerts} disabled={loading.send}>
-            {loading.send ? <><span className="spinner" /> Sending…</> : "📨 Send Alerts for New Matches"}
-          </button>
-          <a href={exportExcelUrl()} target="_blank" rel="noreferrer" className="btn btn-outline">
-            📥 Export to Excel
-          </a>
-        </div>
-
-        {/* Alert results summary */}
-        {alertResults.length > 0 && (
-          <div style={{ marginTop: "16px" }}>
-            {alertResults.map((r, i) => {
-              const isSkip = r.status.startsWith("skipped");
-              const isFail = r.status.startsWith("failed");
-              const color  = isSkip ? "var(--text-muted)" : isFail ? "var(--red)" : "var(--green)";
-              const icon   = isSkip ? "⏭" : isFail ? "❌" : "✅";
-              return (
-                <div key={i} className="alert-result-row">
-                  <span>{icon}</span>
-                  <strong style={{ color: "var(--text-primary)", minWidth: "200px" }}>
-                    {r.title} @ {r.company}
-                  </strong>
-                  <span style={{ color }}>{r.status}</span>
+          <ol className="steps">
+            {steps.map((step, i) => (
+              <li key={step.title} className={`step ${step.done ? "done" : ""}`}>
+                <span className="step-num">{step.done ? <Check size={16} /> : i + 1}</span>
+                <div className="step-body">
+                  <strong>{step.title}</strong>
+                  <span>{step.text}</span>
                 </div>
-              );
-            })}
+                {step.action}
+              </li>
+            ))}
+          </ol>
+
+          <dl className="numbers">
+            <div><dt>Jobs</dt><dd>{jobs.length}</dd></div>
+            <div><dt>Users</dt><dd>{users.length}</dd></div>
+            <div><dt>Alerts sent</dt><dd>{sentCount}</dd></div>
+          </dl>
+        </div>
+
+        <div className="hero-phone">
+          <WhatsAppPreview
+            job={topMatch || { company: "Razorpay", title: "Senior Backend Engineer", location: "Bangalore, India", workType: "Hybrid", jobUrl: "https://razorpay.com/jobs/…" }}
+          />
+          <p className="phone-caption">
+            {topMatch ? `${users[0].name}'s best match right now` : "What a user receives"}
+          </p>
+        </div>
+      </section>
+
+      {history.length > 0 && (
+        <section className="panel">
+          <div className="panel-head">
+            <h2 className="panel-title">Latest alerts</h2>
+            <button className="btn btn-ghost btn-sm" onClick={() => navigate("history")}>See all</button>
           </div>
-        )}
-      </div>
+          <ul className="activity">
+            {history.slice(0, 5).map((log) => (
+              <li key={log._id}>
+                <span className={`dot dot-${log.status}`} />
+                <span><strong>{log.jobId?.title || "Deleted job"}</strong> at {log.jobId?.company || "—"}</span>
+                <span className="muted">to {log.userId?.name || "deleted user"}</span>
+                <span className="muted right">{new Date(log.updatedAt).toLocaleString()}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

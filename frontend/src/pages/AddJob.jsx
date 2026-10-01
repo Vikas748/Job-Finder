@@ -1,109 +1,136 @@
 // src/pages/AddJob.jsx
-// Form to manually add a new job posting to the database.
+// Post a new job. As soon as it's saved, every matching user gets a WhatsApp alert.
+// The phone on the right previews the message while you type.
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import TagInput from "../components/TagInput";
-import { addJob } from "../services/api";
+import WhatsAppPreview from "../components/WhatsAppPreview";
 import { useToast } from "../components/Toast";
+import { addJob, getSkillSummary } from "../services/api";
 
-const empty = {
+const today = new Date().toISOString().slice(0, 10);
+
+const EMPTY_JOB = {
   title: "", company: "", location: "", workType: "Remote",
-  postedDate: "", jobUrl: "", keywords: [], description: "",
+  postedDate: today, jobUrl: "", keywords: [], description: "",
 };
 
 export default function AddJob() {
   const toast = useToast();
-  const [form, setForm]       = useState(empty);
-  const [loading, setLoading] = useState(false);
+  const [form, setForm]       = useState(EMPTY_JOB);
+  const [skillNames, setSkillNames] = useState([]);
+  const [saving, setSaving]   = useState(false);
+  const [alerts, setAlerts]   = useState(null); // who got notified about the last job
 
-  function set(field, value) {
-    setForm(f => ({ ...f, [field]: value }));
-  }
+  useEffect(() => {
+    getSkillSummary().then((s) => setSkillNames(s.skills.map((k) => k.name))).catch(() => {});
+  }, []);
 
-  async function handleSubmit() {
-    if (!form.title || !form.company || !form.location || !form.postedDate || !form.jobUrl) {
-      toast("⚠️ Title, Company, Location, Date, and URL are required.", "error");
-      return;
-    }
-    setLoading(true);
+  const set = (field, value) => setForm((f) => ({ ...f, [field]: value }));
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setSaving(true);
     try {
-      await addJob(form);
-      toast("✅ Job added successfully!", "success");
-      setForm(empty);
+      const result = await addJob(form);
+      setAlerts(result.alerts);
+      toast("Job posted.", "success");
+      setForm(EMPTY_JOB);
     } catch (err) {
-      toast(`❌ ${err.message}`, "error");
+      toast(err.message, "error");
     }
-    setLoading(false);
+    setSaving(false);
   }
 
   return (
-    <div>
-      <div className="page-header">
-        <h2>➕ Add a Job</h2>
-        <p>Manually add a new job posting to the database</p>
-      </div>
-
-      <div className="card">
-        <div className="form-grid">
-          <div className="form-group">
-            <label>Job Title *</label>
-            <input type="text" value={form.title} placeholder="e.g. Backend Engineer"
-              onChange={e => set("title", e.target.value)} />
-          </div>
-
-          <div className="form-group">
-            <label>Company *</label>
-            <input type="text" value={form.company} placeholder="e.g. Zerodha"
-              onChange={e => set("company", e.target.value)} />
-          </div>
-
-          <div className="form-group">
-            <label>Location *</label>
-            <input type="text" value={form.location} placeholder="e.g. Bangalore, India"
-              onChange={e => set("location", e.target.value)} />
-          </div>
-
-          <div className="form-group">
-            <label>Work Type *</label>
-            <select value={form.workType} onChange={e => set("workType", e.target.value)}>
-              <option>Remote</option>
-              <option>Hybrid</option>
-              <option>On-site</option>
-            </select>
-          </div>
-
-          <div className="form-group">
-            <label>Posted Date *</label>
-            <input type="text" value={form.postedDate} placeholder="YYYY-MM-DD"
-              onChange={e => set("postedDate", e.target.value)} />
-          </div>
-
-          <div className="form-group">
-            <label>Job URL *</label>
-            <input type="text" value={form.jobUrl} placeholder="https://..."
-              onChange={e => set("jobUrl", e.target.value)} />
-          </div>
-
-          <div className="form-group full-width">
-            <label>Keywords / Skills</label>
-            <TagInput tags={form.keywords}
-              onChange={tags => set("keywords", tags)}
-              placeholder="e.g. Node.js, MongoDB, React" />
-          </div>
-
-          <div className="form-group full-width">
-            <label>Description</label>
-            <textarea rows={3} value={form.description} placeholder="Brief description of the role…"
-              onChange={e => set("description", e.target.value)} />
-          </div>
+    <div className="page">
+      <header className="page-head">
+        <div>
+          <h1>Post a job</h1>
+          <p>Matching users are alerted on WhatsApp the moment you save. This is the quickest way to demo a live alert.</p>
         </div>
+      </header>
 
-        <div className="btn-row">
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={loading}>
-            {loading ? <><span className="spinner" /> Saving…</> : "💾 Add Job"}
-          </button>
-          <button className="btn btn-outline" onClick={() => setForm(empty)}>✕ Clear</button>
-        </div>
+      <div className="split">
+        <form className="panel" onSubmit={handleSubmit}>
+          <div className="form-row">
+            <label className="field">
+              <span>Job title</span>
+              <input value={form.title} onChange={(e) => set("title", e.target.value)} placeholder="Backend Engineer" required />
+            </label>
+            <label className="field">
+              <span>Company</span>
+              <input value={form.company} onChange={(e) => set("company", e.target.value)} placeholder="Zerodha" required />
+            </label>
+          </div>
+
+          <div className="form-row">
+            <label className="field">
+              <span>Location</span>
+              <input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="Bangalore, India" required />
+            </label>
+            <label className="field">
+              <span>Work type</span>
+              <select value={form.workType} onChange={(e) => set("workType", e.target.value)}>
+                <option>Remote</option>
+                <option>Hybrid</option>
+                <option>On-site</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="form-row">
+            <label className="field">
+              <span>Posted date</span>
+              <input type="date" value={form.postedDate} onChange={(e) => set("postedDate", e.target.value)} required />
+            </label>
+            <label className="field">
+              <span>Job URL</span>
+              <input type="url" value={form.jobUrl} onChange={(e) => set("jobUrl", e.target.value)} placeholder="https://…" required />
+            </label>
+          </div>
+
+          <div className="field">
+            <span>Skills required</span>
+            <TagInput
+              tags={form.keywords}
+              onChange={(v) => set("keywords", v)}
+              placeholder="Type a skill and press Enter"
+              suggestions={skillNames}
+            />
+          </div>
+
+          <label className="field">
+            <span>Description</span>
+            <textarea rows={3} value={form.description} onChange={(e) => set("description", e.target.value)} placeholder="What the role involves" />
+          </label>
+
+          <div className="btn-row">
+            <button className="btn btn-primary" disabled={saving}>{saving ? "Posting…" : "Post job and alert matches"}</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setForm(EMPTY_JOB)}>Clear</button>
+          </div>
+
+          {alerts && (
+            <div className="result-box">
+              {alerts.length === 0 ? (
+                <p>No user matched this job, so no alerts were sent.</p>
+              ) : (
+                alerts.map((a, i) => (
+                  <p key={i} className={`result-${a.status}`}>
+                    {a.status === "sent" ? "Sent to" : "Failed for"} <strong>{a.userName}</strong>
+                    {a.channel === "console" && " (demo mode, check the backend terminal)"}
+                    {a.errorMessage && `: ${a.errorMessage}`}
+                  </p>
+                ))
+              )}
+            </div>
+          )}
+        </form>
+
+        <aside className="sticky-phone">
+          <WhatsAppPreview job={form} />
+          <p className="phone-caption">Live preview</p>
+        </aside>
       </div>
     </div>
   );

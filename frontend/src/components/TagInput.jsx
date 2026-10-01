@@ -1,44 +1,62 @@
 // src/components/TagInput.jsx
-// Reusable tag/chip input widget.
-// Users type a value and press Enter or comma to add a tag.
+// Type a value and press Enter (or comma) to add it as a chip.
+// Optional "suggestions": clickable chips shown under the box.
 
 import { useState } from "react";
 
-export default function TagInput({ tags, onChange, placeholder = "Type and press Enter…" }) {
-  const [inputValue, setInputValue] = useState("");
+export default function TagInput({ tags, onChange, placeholder, suggestions = [] }) {
+  const [text, setText] = useState("");
+
+  const hasTag = (value) => tags.some((t) => t.toLowerCase() === value.toLowerCase());
+
+  function addTag(value) {
+    const clean = value.trim().replace(/,$/, "");
+    if (clean && !hasTag(clean)) onChange([...tags, clean]);
+    setText("");
+  }
 
   function handleKeyDown(e) {
-    if (e.key !== "Enter" && e.key !== ",") return;
-    e.preventDefault();
-
-    const value = inputValue.trim().replace(/,$/, "");
-    if (!value) return;
-    if (tags.includes(value)) { setInputValue(""); return; }   // no duplicates
-
-    onChange([...tags, value]);
-    setInputValue("");
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(text);
+    }
+    // Backspace on an empty box removes the last chip
+    if (e.key === "Backspace" && !text && tags.length > 0) {
+      onChange(tags.slice(0, -1));
+    }
   }
 
-  function removeTag(tagToRemove) {
-    onChange(tags.filter(t => t !== tagToRemove));
-  }
+  const openSuggestions = suggestions.filter((s) => !hasTag(s)).slice(0, 10);
 
   return (
-    <div className="tag-input-wrapper" onClick={() => document.getElementById("ti-" + placeholder)?.focus()}>
-      {tags.map(tag => (
-        <span key={tag} className="tag">
-          {tag}
-          <span className="tag-remove" onClick={() => removeTag(tag)}>×</span>
-        </span>
-      ))}
-      <input
-        id={"ti-" + placeholder}
-        className="tag-field"
-        value={inputValue}
-        onChange={e => setInputValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder={tags.length === 0 ? placeholder : ""}
-      />
+    <div>
+      <div className="tag-box">
+        {tags.map((tag) => (
+          <span key={tag} className="chip chip-selected">
+            {tag}
+            <button type="button" aria-label={`Remove ${tag}`} onClick={() => onChange(tags.filter((t) => t !== tag))}>
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={() => text && addTag(text)}
+          placeholder={tags.length === 0 ? placeholder : "Add more…"}
+        />
+      </div>
+
+      {openSuggestions.length > 0 && (
+        <div className="suggestions">
+          {openSuggestions.map((s) => (
+            <button type="button" key={s} className="chip chip-suggest" onClick={() => addTag(s)}>
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

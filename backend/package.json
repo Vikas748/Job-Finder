@@ -1,7 +1,7 @@
 {
   "name": "job-filter-backend",
   "version": "1.0.0",
-  "description": "Job Filter & Alert System — Express + MongoDB backend",
+  "description": "Job Filter & Alert System \u2014 Express + MongoDB backend",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -11,7 +11,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "exceljs": "^4.4.0",
-    "express": "^4.19.2",
+    "express": "^5.1.0",
     "mongoose": "^8.4.0",
     "twilio": "^5.2.3"
   },

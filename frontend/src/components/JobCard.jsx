@@ -1,67 +1,60 @@
 // src/components/JobCard.jsx
-// Renders a single job posting as a card.
-// Used on the Matching Jobs page.
+// One matching job: score, skills the user has vs. skills the job also wants.
 
-function workTypeBadge(wt) {
-  const map = { Remote: "badge-remote", Hybrid: "badge-hybrid", "On-site": "badge-onsite" };
-  return <span className={`badge ${map[wt] || "badge-onsite"}`}>{wt}</span>;
-}
+import { MapPin, CalendarDays, ExternalLink, Check } from "lucide-react";
 
 export default function JobCard({ job }) {
-  // Build 1–2 letter company logo from company name initials
-  const initials = (job.company || "?")
-    .split(" ")
-    .map(w => w[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
+  const score = job.matchScore ?? 0;
 
   return (
-    <div className="job-card">
-      <div className="job-card-header">
-        <div style={{ display: "flex", gap: "12px", alignItems: "flex-start", flex: 1 }}>
-          <div className="company-logo">{initials}</div>
-          <div>
-            <div className="job-title">{job.title}</div>
-            <div className="job-company">{job.company}</div>
-          </div>
+    <article className="job-card">
+      <header className="job-card-head">
+        <div>
+          <h3 className="job-title">{job.title}</h3>
+          <div className="job-company">{job.company}</div>
         </div>
-        {workTypeBadge(job.workType)}
-      </div>
+        {/* Score ring: the conic-gradient fills to the score percentage */}
+        <div className="score-ring" style={{ "--score": score }} title={`Match score ${score}%`}>
+          <span>{score}</span>
+        </div>
+      </header>
 
       <div className="job-meta">
-        <span className="job-meta-item">📍 {job.location}</span>
-        <span className="job-meta-item">📅 {job.postedDate}</span>
+        <span><MapPin size={14} /> {job.location}</span>
+        <span className={`worktype wt-${job.workType.toLowerCase()}`}>{job.workType}</span>
+        <span><CalendarDays size={14} /> {job.postedDate}</span>
       </div>
 
-      {job.matchReason && (
-        <div className="match-reason">
-          <strong>🎯 Why it matched</strong>
-          {job.matchReason}
-        </div>
-      )}
-
-      {job.keywords && job.keywords.length > 0 && (
-        <div className="keywords-row">
-          {job.keywords.slice(0, 5).map(k => (
-            <span key={k} className="keyword-chip">{k}</span>
+      {job.matchedSkills?.length > 0 && (
+        <div className="skill-row">
+          <span className="skill-row-label">You have</span>
+          {job.matchedSkills.map((s) => (
+            <span key={s} className="chip chip-have"><Check size={12} /> {s}</span>
           ))}
         </div>
       )}
 
-      <div className="job-card-footer">
-        <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-          {job._id ? `ID: ${job._id.slice(-6)}` : ""}
-        </span>
-        <a
-          href={job.jobUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="btn btn-primary btn-sm"
-        >
-          Apply ↗
+      {job.missingSkills?.length > 0 && (
+        <div className="skill-row">
+          <span className="skill-row-label">Also wants</span>
+          {job.missingSkills.map((s) => (
+            <span key={s} className="chip chip-missing">{s}</span>
+          ))}
+        </div>
+      )}
+
+      {job.matchReason && <p className="match-reason">{job.matchReason}</p>}
+
+      <footer className="job-card-foot">
+        {job.alreadyNotified ? (
+          <span className="sent-tag"><Check size={14} /> Sent on WhatsApp</span>
+        ) : (
+          <span className="new-tag">Not sent yet</span>
+        )}
+        <a href={job.jobUrl} target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+          Open job <ExternalLink size={14} />
         </a>
-      </div>
-    </div>
+      </footer>
+    </article>
   );
 }

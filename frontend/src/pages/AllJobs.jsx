@@ -1,91 +1,129 @@
 // src/pages/AllJobs.jsx
-// Displays every job in the database as a searchable table.
+// Every job in the database, plus which skills are most in demand.
 
 import { useState, useEffect } from "react";
-import { getAllJobs } from "../services/api";
+import { Search, Trash2, ExternalLink } from "lucide-react";
 import { useToast } from "../components/Toast";
+import { getAllJobs, getSkillSummary, deleteJob, seedJobs } from "../services/api";
 
-function WorkTypeBadge({ type }) {
-  const map = { Remote: "badge-remote", Hybrid: "badge-hybrid", "On-site": "badge-onsite" };
-  return <span className={`badge ${map[type] || "badge-onsite"}`}>{type}</span>;
-}
-
-export default function AllJobs() {
+export default function AllJobs({ navigate }) {
   const toast = useToast();
-  const [jobs, setJobs]       = useState([]);
+  const [jobs, setJobs]     = useState([]);
+  const [skills, setSkills] = useState([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState("");
 
   useEffect(() => { load(); }, []);
 
   async function load() {
-    setLoading(true);
     try {
-      const data = await getAllJobs();
-      setJobs(data);
+      const [jobList, summary] = await Promise.all([getAllJobs(), getSkillSummary()]);
+      setJobs(jobList);
+      setSkills(summary.skills.slice(0, 8));
     } catch (err) {
-      toast(`❌ ${err.message}`, "error");
+      toast(err.message, "error");
     }
     setLoading(false);
   }
 
-  const filtered = jobs.filter(j =>
-    [j.title, j.company, j.location, ...(j.keywords || [])]
-      .join(" ").toLowerCase()
-      .includes(search.toLowerCase())
+  async function handleDelete(job) {
+    if (!confirm(`Delete "${job.title}" at ${job.company}?`)) return;
+    await deleteJob(job._id);
+    toast("Job deleted.", "info");
+    load();
+  }
+
+  async function handleSeed() {
+    const { message } = await seedJobs();
+    toast(message, "success");
+    load();
+  }
+
+  const query = search.toLowerCase();
+  const filtered = jobs.filter((j) =>
+    [j.title, j.company, j.location, j.workType, ...j.keywords].join(" ").toLowerCase().includes(query)
   );
+  const topCount = skills[0]?.count || 1;
 
   return (
-    <div>
-      <div className="page-header">
-        <h2>💼 All Jobs</h2>
-        <p>Complete list of jobs in the database ({jobs.length} total)</p>
-      </div>
-
-      <div className="card">
-        {/* Search bar */}
-        <input
-          type="text"
-          placeholder="🔍  Search by title, company, location, keyword…"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          style={{ marginBottom: "16px", maxWidth: "400px" }}
-        />
-
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Title</th>
-                <th>Company</th>
-                <th>Location</th>
-                <th>Work Type</th>
-                <th>Posted</th>
-                <th>Link</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">🔄</div><p>Loading…</p></div></td></tr>
-              ) : filtered.length === 0 ? (
-                <tr><td colSpan={6}><div className="empty-state"><div className="empty-icon">📭</div><p>No jobs found. Use "Load Sample Jobs" on the Dashboard.</p></div></td></tr>
-              ) : filtered.map(job => (
-                <tr key={job._id}>
-                  <td><strong>{job.title}</strong></td>
-                  <td>{job.company}</td>
-                  <td>{job.location}</td>
-                  <td><WorkTypeBadge type={job.workType} /></td>
-                  <td>{job.postedDate}</td>
-                  <td>
-                    <a href={job.jobUrl} target="_blank" rel="noreferrer"
-                       style={{ color: "var(--accent-light)" }}>Apply ↗</a>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    <div className="page">
+      <header className="page-head">
+        <div>
+          <h1>All jobs</h1>
+          <p>{jobs.length} job{jobs.length === 1 ? "" : "s"} in the database.</p>
         </div>
-      </div>
+        <button className="btn btn-primary" onClick={() => navigate("addjob")}>Post a job</button>
+      </header>
+
+      {skills.length > 0 && (
+        <section className="panel">
+          <h2 className="panel-title">Most requested skills</h2>
+          <div className="bars">
+            {skills.map((s) => (
+              <div key={s.name} className="bar-row">
+                <span className="bar-label">{s.name}</span>
+                <span className="bar-track">
+                  <span className="bar-fill" style={{ width: `${(s.count / topCount) * 100}%` }} />
+                </span>
+                <span className="bar-value">{s.count} job{s.count > 1 ? "s" : ""}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="panel">
+        <label className="search">
+          <Search size={16} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search title, company, location or skill"
+          />
+        </label>
+
+        {!loading && jobs.length === 0 ? (
+          <div className="empty">
+            <h2>No jobs yet</h2>
+            <p>Load the sample set or post your own job.</p>
+            <button className="btn btn-primary" onClick={handleSeed}>Load sample jobs</button>
+          </div>
+        ) : (
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Location</th>
+                  <th>Type</th>
+                  <th>Skills</th>
+                  <th>Posted</th>
+                  <th aria-label="Actions" />
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((job) => (
+                  <tr key={job._id}>
+                    <td>
+                      <strong>{job.title}</strong>
+                      <div className="muted">{job.company}</div>
+                    </td>
+                    <td>{job.location}</td>
+                    <td><span className={`worktype wt-${job.workType.toLowerCase()}`}>{job.workType}</span></td>
+                    <td className="chip-cell">{job.keywords.map((k) => <span key={k} className="chip">{k}</span>)}</td>
+                    <td className="nowrap">{job.postedDate}</td>
+                    <td className="nowrap">
+                      <a className="icon-btn" href={job.jobUrl} target="_blank" rel="noreferrer" aria-label="Open job"><ExternalLink size={16} /></a>
+                      <button className="icon-btn danger" onClick={() => handleDelete(job)} aria-label="Delete job"><Trash2 size={16} /></button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtered.length === 0 && <p className="muted pad">No jobs match "{search}".</p>}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

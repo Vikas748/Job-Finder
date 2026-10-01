@@ -1,86 +1,46 @@
 // controllers/notificationController.js
-// Handles sending WhatsApp alerts, viewing history, and exporting to Excel.
+// Alerts for everyone, alert history, and Twilio status.
 
-const Job             = require("../models/Job");
-const UserProfile     = require("../models/UserProfile");
+const User            = require("../models/User");
 const NotificationLog = require("../models/NotificationLog");
-const MatcherService  = require("../services/matcher");
-const NotifierService = require("../services/notifier");
-const ExcelExporter   = require("../services/excelExporter");
+const { alertUser }   = require("../services/alertService");
+const { getStatus }   = require("../services/notifier");
 
-// POST /api/notifications/send
-// Full pipeline:
-//   1. Load profile and all jobs
-//   2. Find matching jobs
-//   3. Skip any job already notified (duplicate guard)
-//   4. Send WhatsApp message for new matches
-//   5. Log each notification result
-const sendNotifications = async (req, res) => {
-  const profile = await UserProfile.findById("main");
-  if (!profile) {
-    return res.status(400).json({ error: "No user profile found. Save your preferences first." });
-  }
+// POST /api/notifications/send  → run alerts for every user
+const sendAllAlerts = async (req, res) => {
+  const results = [];
 
-  const allJobs = await Job.find();
-  const matcher = new MatcherService(profile);
-  const matched = matcher.filter(allJobs);
-
-  const notifier = new NotifierService();
-  const results  = [];
-
-  for (const job of matched) {
-    // ── Duplicate guard: skip if already notified ────────────────────
-    const alreadyNotified = await NotificationLog.findOne({ jobId: job._id });
-    if (alreadyNotified) {
-      results.push({ jobId: job._id, title: job.title, company: job.company, status: "skipped (already notified)" });
-      continue;
-    }
-
-    // ── Send notification ────────────────────────────────────────────
-    const { success, channel, errorMessage } = await notifier.send(profile.phoneNumber, job);
-
-    // ── Log the attempt ──────────────────────────────────────────────
-    await NotificationLog.create({
-      jobId:        job._id,
-      status:       success ? "sent" : "failed",
-      channel,
-      errorMessage: errorMessage || "",
-    });
-
-    results.push({
-      jobId:   job._id,
-      title:   job.title,
-      company: job.company,
-      status:  success ? "sent" : `failed: ${errorMessage}`,
-      channel,
-    });
+  for (const user of await User.find()) {
+    const userResults = await alertUser(user);
+    userResults.forEach((r) => results.push({ ...r, userName: user.name }));
   }
 
   res.json({ results });
 };
 
-// GET /api/notifications/history
-// Returns all past notification log entries.
+// GET /api/notifications/history?userId=...  → alert log (optionally for one user)
 const getHistory = async (req, res) => {
-  const logs = await NotificationLog.find()
-    .populate("jobId", "title company")   // include job title and company in response
-    .sort({ createdAt: -1 });
+  const filter = req.query.userId ? { userId: req.query.userId } : {};
+
+  const logs = await NotificationLog.find(filter)
+    .populate("jobId", "title company")
+    .populate("userId", "name phoneNumber")
+    .sort({ updatedAt: -1 });
+
   res.json(logs);
 };
 
-// GET /api/notifications/export
-// Generates an Excel file of matching jobs and streams it as a download.
-const exportExcel = async (req, res) => {
-  const profile = await UserProfile.findById("main");
-  const allJobs = await Job.find();
-
-  const matcher = new MatcherService(profile || {});
-  const matched = profile ? matcher.filter(allJobs) : allJobs.map(j => j.toObject());
-
-  const exporter  = new ExcelExporter();
-  const filePath  = await exporter.export(matched);
-
-  res.download(filePath, "matching_jobs.xlsx");
+// DELETE /api/notifications/history?userId=...
+// Clears the log so the same jobs can be sent again — handy for repeating a demo.
+const clearHistory = async (req, res) => {
+  const filter = req.query.userId ? { userId: req.query.userId } : {};
+  const { deletedCount } = await NotificationLog.deleteMany(filter);
+  res.json({ message: `Cleared ${deletedCount} alert(s).` });
 };
 
-module.exports = { sendNotifications, getHistory, exportExcel };
+// GET /api/notifications/status  → is Twilio connected, and the sandbox join details
+const getNotifierStatus = (req, res) => {
+  res.json(getStatus());
+};
+
+module.exports = { sendAllAlerts, getHistory, clearHistory, getNotifierStatus };
